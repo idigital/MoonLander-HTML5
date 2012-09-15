@@ -5,6 +5,7 @@ KeyTracker = new (function(){
 	this.LEFT = 37; 
 	this.RIGHT = 39; 
 	this.DOWN = 40; 
+	this.keyListeners = []; 
 	
 	this.isKeyDown = function (key) { 
 		if (typeof key == 'string')
@@ -13,8 +14,19 @@ KeyTracker = new (function(){
 	};
 	
 	document.addEventListener("keydown", function(e) {	
-		KeyTracker.keysPressed[e.keyCode] = true; }); 
+		
+		KeyTracker.keysPressed[e.keyCode] = true; 
+		
+		}); 
 	document.addEventListener("keyup", 	function(e) {
 		KeyTracker.keysPressed[e.keyCode] = false;}); 
+		
+	this.addKeyDownListener = function(key, func) { 
+		if (typeof key == 'string')
+			key = key.charCodeAt(0); 
+		
+		this.keyListeners.push({key:key, func:func});
+		
+	}
 		
 })();

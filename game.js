@@ -1,74 +1,3 @@
-<!DOCTYPE HTML>
-<html lang="en">
-	<head>
-		<title>Lunar Lander</title>
-		<meta charset="utf-8">
-		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0"/>
-		<meta name="apple-mobile-web-app-capable" content="yes" />
-		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-		
-		
-		<style type="text/css">
-			
-
-			@font-face {
-			    font-family: 'VectorBattleRegular';
-			    src: url('vectorb-webfont.eot');
-			    src: url('vectorb-webfont.eot?#iefix') format('embedded-opentype'),
-			         url('vectorb-webfont.woff') format('woff'),
-			         url('vectorb-webfont.ttf') format('truetype'),
-			         url('vectorb-webfont.svg#VectorBattleRegular') format('svg');
-			    font-weight: normal;
-			    font-style: normal;
-
-			}
-			
-			body {
-				background-color: #000022;
-				margin: 0px;
-				overflow: hidden;
-			
-			}
-			.infoBox{ 
-				font-family: 'VectorBattleRegular';
-				font-size:9pt;
-				letter-spacing : 0.2em;
-				line-height:1.7em; 
-				color:white;
-				
-			}
-		
-			a {
-				color:#0078ff;
-			}
-			
-			
-@media only screen and (max-width: 650px) {
-	.infoBox{ 
-	
-		font-size:6pt;
-	
-	}			
-
-			
-		</style>
-	</head>
-	<body>
-		<script src="libs/Vector2.js"></script>
-		<script src="libs/Stats.js"></script>
-		<script src="KeyTracker.js"></script>
-		<script src="LandscapeData.js"></script>
-		<script src="InfoDisplay.js"></script>
-		<script src="Lander.js"></script>
-		<!-- requestAnimationFrame shim --> 
-		<script src="libs/rAF.js"> </script>
-		<!-- jsfxr audio sound generator --> 
-		<script src="libs/audio.js"></script>
-		<script src="libs/jsfx.js"></script>
-		<script src="libs/jsfxlib.js"></script>	
-		<script src="Sounds.js"></script>
-		<script>
-
 
 // screen size variables
 var SCREEN_WIDTH = window.innerWidth,
@@ -81,6 +10,9 @@ var SCREEN_WIDTH = window.innerWidth,
 	counter = 0, 
 	gameStartTime = Date.now(), 
 	skippedFrames; 
+	
+var ws, 
+	wsID; 
 	
 // game states
 var	WAITING = 0, 
@@ -96,6 +28,7 @@ var	WAITING = 0,
 	
 	lander = new Lander(),
 	landscape = new Landscape(), 
+	players = {}, 
 	
 
 
@@ -128,6 +61,49 @@ window.addEventListener("load", init);
 function init() 
 {
 	
+	ws = new WebSocket("ws://moonlander.seb.ly"); 
+	ws.onopen = function(e) { 
+		
+		console.log('connected'); 
+		wsConnected = true; 
+		
+	} 
+	ws.onmessage = function(e) { 
+	//	console.log(e.data); 
+		
+		var msg = JSON.parse(e.data); 
+		
+		if(msg.type=='connect') { 
+			wsID = msg.id;
+			
+		} else if(msg.type=='join') {
+			// add new player object
+		} else if(msg.type=='update') { 
+			// update player object
+			if(!players[msg.id]) { 
+				players[msg.id] = new Lander(); 
+				players[msg.id].scale = lander.scale;
+			}
+			var player = players[msg.id]; 
+			player.pos.x = msg.posx/100; 
+			player.pos.y = msg.posy/100; 
+			player.rotation = msg.rotation; 
+			player.thrusting = (msg.thrusting == 1);
+			
+		} else if(msg.type=='leave') { 
+			// delete player object
+			if(players[msg.id]) delete players[msg.id]; 
+
+		}
+			
+			
+		
+	}
+	ws.onclose = function(e) { 
+		wsConnected = false; 
+		console.log("disconnected!"); 
+	}
+	
 	// CANVAS SET UP
 	
 	document.body.appendChild(canvas); 
@@ -141,7 +117,6 @@ function init()
 	
 	canvas.width = SCREEN_WIDTH; 
 	canvas.height = SCREEN_HEIGHT;
-//	canvas.style.webkitTransform = 'translateZ(0)';
 
 	
 	document.body.addEventListener('mousedown', onMouseDown);
@@ -157,6 +132,24 @@ function init()
 	loop();
 	
 }
+
+function sendPosition() {
+	if(gameState==PLAYING) {
+		var update = {
+			type : 'update', 
+			id : wsID, 
+			posx : Math.round(lander.pos.x*100), 
+			posy : Math.round(lander.pos.y*100), 
+			rotation : Math.round(lander.rotation), 
+		}
+		// if(lander.exploding) update.exploding = 1; 
+		// 	if(lander.thrusting) update.thrusting = 1; 
+			
+		ws.send(JSON.stringify(update)); 
+		//console.log(JSON.stringify(lander.pos));
+	}
+}
+
 
 //
 
@@ -182,13 +175,21 @@ function loop() {
 	
 	while(elapsedFrames > counter) {
 			lander.update(); 
+			if((counter%6)==0){
+				sendPosition(); 
+
+			}
+			
+			
 			counter++; 
 		
 			skippedFrames ++; 
 			if (skippedFrames>30) {
 				//set to paused
 				counter = elapsedFrames; 
-			}
+			} 
+			
+			
 
 		}
 	
@@ -201,7 +202,11 @@ function loop() {
 	}
 
 	lander.update(); 
-
+	if((counter%6)==0){
+		sendPosition(); 
+	
+	}
+	
 	if((gameState == WAITING) && (lander.altitude<100) ) {
 		gameState=GAMEOVER;
 		restartLevel();
@@ -223,7 +228,7 @@ function render() {
 	c.clearRect(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
 	//c.fillRect(lander.left, lander.top, lander.right-lander.left, lander.bottom-lander.top);
 	if(skippedFrames>0) { 
-		c.fillStyle = 'red'; 
+		c.fillStyle = 'green'; 
 		c.fillRect(0,0,10*skippedFrames,10);
 	}
 	c.save(); 
@@ -242,6 +247,11 @@ function render() {
 
 	landscape.render(context, view);
 	lander.render(context, view.scale);
+	
+	for (var id in players) {
+		var player = players[id]; 
+		player.render(context, view.scale); 
+	}
 	
 	if(counter%4==0) updateTextInfo(); 
 	
@@ -532,8 +542,7 @@ function setZoom(zoom )
 		lander.scale = 0.25;
 	
 	} 
-	else 
-	{
+	else {
 		
 		view.scale = SCREEN_HEIGHT/700;
 		zoomedIn = false;
@@ -541,6 +550,13 @@ function setZoom(zoom )
 		view.x = 0;
 		view.y = 0;
 	}
+	
+	for (var id in players) { 
+		var player = players[id]; 
+		player.scale = lander.scale; 
+	}
+	
+	
 }
 
 // returns a random number between the two limits provided 
@@ -579,8 +595,3 @@ function resizeGame (event) {
 	infoDisplay.arrangeBoxes(SCREEN_WIDTH, SCREEN_HEIGHT); 
 
 }
-		
-			
-		</script>
-	</body>
-</html>
